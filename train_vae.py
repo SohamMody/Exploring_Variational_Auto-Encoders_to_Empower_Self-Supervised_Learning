@@ -6,6 +6,9 @@ from torch.nn import functional as F
 from torchvision.utils import save_image
 from torchvision import transforms, datasets
 from tqdm import tqdm
+import numpy as np
+import os
+import shutil
 
 parser = argparse.ArgumentParser(description='VAE')
 parser.add_argument('--batch-size', type=int, default=128, metavar='N',
@@ -118,6 +121,25 @@ class VAE(nn.Module):
         return self.decode(z), mu, logvar
 
 
+def save_checkpoint(state, is_best, checkpoint_dir):
+    """Saves model and training parameters at checkpoint_dir + '/last.pt'. If is_best==True, also saves
+    checkpoint_dir + '/best.pt'
+    Args:
+        state: (dict) contains model's state_dict, may contain other keys such as epoch, optimizer state_dict
+        is_best: (bool) True if it is the best model seen till now
+        checkpoint_dir: (string) folder where parameters are to be saved
+    """
+    filepath = os.path.join(checkpoint_dir, 'last.pt')
+    if not os.path.exists(checkpoint_dir):
+        print("Checkpoint Directory does not exist! Making directory {}".format(checkpoint_dir))
+        os.mkdir(checkpoint_dir)
+    # else:
+    #     print("Checkpoint Directory exists! ")
+    torch.save(state, filepath)
+    if is_best:
+        shutil.copyfile(filepath, os.path.join(checkpoint_dir, 'best.pt'))
+
+
 model = VAE().to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
@@ -175,9 +197,26 @@ def validate(epoch, data_loader):
 
     valid_loss /= len(data_loader.dataset)
     print('====> Valid set loss: {:.4f}'.format(valid_loss))
+    return valid_loss
 
 
 if __name__ == "__main__":
+
+    best_val_loss = np.inf
+
     for epoch in range(1, args.epochs + 1):
         train(epoch, data_loader=unsup_loader)
-        validate(epoch, data_loader=valid_loader)
+        val_loss = validate(epoch, data_loader=valid_loader)
+
+        is_best = val_loss <= best_val_loss
+
+        # save weights
+        save_checkpoint({'epoch': epoch,
+                         'validation loss': val_loss,
+                         'state_dict': model.state_dict(),
+                         'optim_dict': optimizer.state_dict()},
+                        is_best=is_best,
+                        checkpoint_dir='models_vae')
+        if is_best:
+            print('- Found new best validation accuracy\n')
+            best_val_loss = val_loss
