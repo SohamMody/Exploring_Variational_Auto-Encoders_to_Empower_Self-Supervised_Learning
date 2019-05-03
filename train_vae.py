@@ -72,31 +72,30 @@ class VAE(nn.Module):
         super(VAE, self).__init__()
 
         # encode
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.conv1_bn = nn.BatchNorm2d(6)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.conv2_bn = nn.BatchNorm2d(16)
-        self.fc1 = nn.Linear(16 * 24 * 24, 120)
-        self.fc1_bn = nn.BatchNorm1d(120)
+        self.conv1 = nn.Conv2d(3, 9, 5)
+        self.conv1_bn = nn.BatchNorm2d(9)
+        self.conv2 = nn.Conv2d(9, 9, 5)
+        self.conv2_bn = nn.BatchNorm2d(9)
+        self.fc1 = nn.Linear(9 * 88 * 88, 1024)
+        self.fc1_bn = nn.BatchNorm1d(1024)
 
         # latent vectors mu and logvar
-        self.fc21 = nn.Linear(120, 400)
-        self.fc22 = nn.Linear(120, 400)
+        self.fc21 = nn.Linear(1024, 1024)
+        self.fc22 = nn.Linear(1024, 1024)
 
         # decode
-        self.fc2 = nn.Linear(400, 16 * 24 * 24)
-        self.fc2_bn = nn.BatchNorm1d(16 * 24 * 24)
-        self.conv3 = nn.ConvTranspose2d(16, 6, 5)
-        self.conv3_bn = nn.BatchNorm2d(6)
-        self.conv4 = nn.ConvTranspose2d(6, 3, 5)
+        self.fc2 = nn.Linear(1024, 9 * 88 * 88)
+        self.fc2_bn = nn.BatchNorm1d(9 * 88 * 88)
+        self.conv3 = nn.ConvTranspose2d(9, 9, 5)
+        self.conv3_bn = nn.BatchNorm2d(9)
+        self.conv4 = nn.ConvTranspose2d(9, 3, 5)
 
     def encode(self, x):
         x = self.conv1(x)
         x = F.relu(self.conv1_bn(x))
         x = self.conv2(x)
         x = F.relu(self.conv2_bn(x))
-        x = x.view(-1, 16 * 24 * 24)
+        x = x.view(-1, 9 * 88 * 88)
         x = self.fc1(x)
         h1 = F.relu(self.fc1_bn(x))
         return self.fc21(h1), self.fc22(h1)
@@ -109,7 +108,7 @@ class VAE(nn.Module):
     def decode(self, z):
         z = self.fc2(z)
         z = F.relu(self.fc2_bn(z))
-        z = z.view(-1, 16, 24, 24)
+        z = z.view(-1, 9, 88, 88)
         z = self.conv3(z)
         z = F.relu(self.conv3_bn(z))
         h2 = F.relu(self.conv4(z))
@@ -191,7 +190,7 @@ def validate(epoch, data_loader):
             if i == 0:
                 n = min(data.size(0), 8)
                 comparison = torch.cat([data[:n],
-                                        recon_batch.view(data.shape[0], 3, 32, 32)[:n]])
+                                        recon_batch.view(data.shape[0], 3, 96, 96)[:n]])
                 save_image(comparison.cpu(),
                            'results/reconstruction_' + str(epoch) + '.png', nrow=n)
 
