@@ -218,5 +218,5 @@ if __name__ == "__main__":
                         is_best=is_best,
                         checkpoint_dir='models_vae')
         if is_best:
-            print('- Found new best validation accuracy\n')
+            print('- Found new best validation loss\n')
             best_val_loss = val_loss
