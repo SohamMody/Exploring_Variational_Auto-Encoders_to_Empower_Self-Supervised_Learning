@@ -9,6 +9,7 @@ from tqdm import tqdm
 import numpy as np
 import os
 import shutil
+import sys
 
 parser = argparse.ArgumentParser(description='VAE chopped')
 parser.add_argument('--batch-size', type=int, default=128, metavar='N',
@@ -62,7 +63,7 @@ def image_loader(path, batch_size):
 
 
 # load data
-train_loader, valid_loader, unsup_loader = image_loader(path='data/ssl_data_96',
+train_loader, valid_loader, unsup_loader = image_loader(path='ssl_data_96',
                                                         batch_size=args.batch_size)
 
 
@@ -124,19 +125,35 @@ class FineTuneModel(nn.Module):
     def __init__(self, original_model):
         super(FineTuneModel, self).__init__()
         # only the encoder of VAE (first 6 layers)
-        self.features = nn.Sequential(*list(original_model.children())[:6])
+        # self.features = nn.Sequential(*list(original_model.children())[:6])
+        self.conv1 = nn.Conv2d(3, 9, 5)
+        self.conv1_bn = nn.BatchNorm2d(9)
+        self.conv2 = nn.Conv2d(9, 9, 5)
+        self.conv2_bn = nn.BatchNorm2d(9)
+        self.fc1 = nn.Linear(9 * 88 * 88, 1024)
+        self.fc1_bn = nn.BatchNorm1d(1024)
         self.fc3 = nn.Linear(1024, 1000)
         self.modelName = 'chopped_net'
         # Freeze those weights
-        for p in self.features.parameters():
-            p.requires_grad = False
+        for layer in [self.conv1, self.conv1_bn, self.conv2, self.conv2_bn, self.fc1, self.fc1_bn]:
+            for p in layer.parameters():
+                p.requires_grad = True
+    
+    def encode(self, x):
+        x = self.conv1(x)
+        x = F.relu(self.conv1_bn(x))
+        x = self.conv2(x)
+        x = F.relu(self.conv2_bn(x))
+        x = x.view(-1, 9 * 88 * 88)
+        x = self.fc1(x)
+        h1 = F.relu(self.fc1_bn(x))
+        return h1
 
-
-    def forward(self, x):
-        x = self.features(x)        
-        x = f.view(x.size(0), -1)
-        x = self.fc3(1000)
-        return x
+    def forward(self, x):   
+        x = self.encode(x)     
+        x = x.view(x.size(0), -1) 
+        x = self.fc3(x)   
+        return F.log_softmax(x,dim=1)
 
 def save_checkpoint(state, is_best, checkpoint_dir):
     """Saves model and training parameters at checkpoint_dir + '/last.pt'. If is_best==True, also saves
@@ -179,11 +196,11 @@ def load_checkpoint(checkpoint, model, optimizer=None):
 model = VAE().to(device)
 
 # reload weights from restore_file if specified
-restore_file = 'best_vae.pt'  # specify checkpoint to restore from or specify None
+restore_file = 'best.pt'  # specify checkpoint to restore from or specify None
 if restore_file is not None:
-    restore_path = os.path.join('models', restore_file)
+    restore_path = os.path.join('drive/My Drive/DL_Project/models_vae_1', restore_file)
     print("Restoring parameters from {}".format(restore_path))
-    loaded_checkpoint = utils.load_checkpoint(restore_path, model)
+    loaded_checkpoint = load_checkpoint(restore_path, model)
     print('some info on the loaded checkpoint:\n'
           '(1) average validation loss on this checkpoint is {:.4f}\n'
           '(2) it was created after {} epochs (this may not be the exact '
@@ -193,7 +210,7 @@ if restore_file is not None:
                   loaded_checkpoint['epoch']))
 
 # create "chopped" model
-model_chopped = FineTuneModel().to(device)
+model_chopped = FineTuneModel(model).to(device)
 
 # Optimizer: SGD with learning rate of 1e-2 and momentum of 0.5
 optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
@@ -215,7 +232,6 @@ def train(model, device, train_loader, optimizer, epoch, log_interval=1):
 
         # Pass data through model
         output = model(data)
-
         # Compute the negative log likelihood loss
         loss = F.nll_loss(output, target)
 
@@ -230,10 +246,6 @@ def train(model, device, train_loader, optimizer, epoch, log_interval=1):
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                        100. * batch_idx / len(train_loader), loss.item()))
-            if log:
-                log_file.write('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\n'.format(
-                    epoch, batch_idx * len(data), len(train_loader.dataset),
-                           100. * batch_idx / len(train_loader), loss.item()))
             sys.stdout.flush()
 
 
@@ -268,16 +280,12 @@ def validate(model, device, valid_loader):
     avg_valid_loss = valid_loss / len(valid_loader.dataset)
 
     # compute validation accuracy
-    valid_accuracy = 100. * num_correct / len(valid_loader.dataset)
+    valid_accuracy = (100.0 * num_correct)/ len(valid_loader.dataset)
 
     # print loss
     print('\nValid set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
         avg_valid_loss, num_correct, len(valid_loader.dataset),
         valid_accuracy))
-    if log:
-        log_file.write('\nValid set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            avg_valid_loss, num_correct, len(valid_loader.dataset),
-            valid_accuracy))
     sys.stdout.flush()
     return avg_valid_loss, valid_accuracy
 
@@ -285,30 +293,29 @@ def validate(model, device, valid_loader):
 
 
 if __name__ == "__main__":
+   best_val_acc = -1
    # training loop
    for epoch in range(1, args.epochs + 1):
        # train model
-       train(model, device, train_loader, optimizer, epoch)
+
+       train(model_chopped, device, train_loader, optimizer, epoch)
 
        # validate model
-       val_loss, val_acc = validate(model, device, valid_loader)
+       val_loss, val_acc = validate(model_chopped, device, valid_loader)
 
        is_best = val_acc >= best_val_acc
 
     # save weights
-       utils.save_checkpoint({'epoch': epoch,
+       save_checkpoint({'epoch': epoch,
                            'validation loss': val_loss,
                            'validation accuracy': val_acc,
-                           'state_dict': model.state_dict(),
+                           'state_dict': model_chopped.state_dict(),
                            'optim_dict': optimizer.state_dict()},
                           is_best=is_best,
-                          checkpoint_dir='models_chopped')
+                          checkpoint_dir='drive/My Drive/DL_Project/models_chopped')
        if is_best:
            print('- Found new best validation accuracy\n')
-           if log:
-               log_file.write('- Found new best validation accuracy\n\n')
-               best_val_acc = val_acc
-
+           
 
 
 
