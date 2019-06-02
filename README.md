@@ -1,5 +1,5 @@
-# semisupervised-image-classification
-using unsupervised data to improve image classification
+# Exploring VAEs to Empower Self-Supervised Learning
+Using unsupervised data to improve image classification of images taken from ImageNet 1000 classes dataset.
 
 
 ## use pretrained vae
