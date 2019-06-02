@@ -13,17 +13,17 @@ from torchvision import transforms, datasets
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description='chopped')
-parser.add_argument('--data-dir', type=str, default='./data',
+parser.add_argument('--data-dir', type=str, default='./ssl_data_96',
                     help='location of data')
-parser.add_argument('--log-file', type=str, default='log/log',
+parser.add_argument('--log-file', type=str, default='drive/My Drive/DL_Project/model_log/log_conv_freeze_32.txt',
                     help='location of log file')
 parser.add_argument('--restore-file', type=str, default=None,
                     help='location of checkpoint to restore params')
-parser.add_argument('--model-dumpdir', type=str, default='.',
+parser.add_argument('--model-dumpdir', type=str, default='drive/My Drive/DL_Project/models_chopped_conv',
                     help='location to dump models')
-parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+parser.add_argument('--batch-size', type=int, default=256, metavar='N',
                     help='input batch size for training (default: 128)')
-parser.add_argument('--epochs', type=int, default=10, metavar='N',
+parser.add_argument('--epochs', type=int, default=100, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='enables CUDA training')
@@ -226,7 +226,7 @@ model_vae = VAE().to(device)
 # reload weights of pre-trained vae model from restore_file if specified
 restore_vae_file = 'best.pt'  # specify checkpoint to restore from or specify None
 if restore_vae_file is not None:
-    restore_vae_path = os.path.join('models_vae', restore_vae_file)
+    restore_vae_path = os.path.join('drive/My Drive/DL_Project/vae_model_folder', restore_vae_file)
     print("Restoring parameters from {}".format(restore_vae_path))
     log_file.write("Restoring parameters from {}\n".format(restore_vae_path))
     loaded_vae_checkpoint = load_checkpoint(restore_vae_path, model_vae)
@@ -343,9 +343,9 @@ if __name__ == "__main__":
     log_file.write('total number of parameters: %d\n' % sum([m.numel() for m in model_chopped.parameters()]))
 
     if args.freeze_vaeweights:
-        checkpoint_dir = '{}/models_chopped_conv_freeze'.format(args.model_dumpdir)
+        checkpoint_dir = '{}/models_chopped_conv_freeze_32'.format(args.model_dumpdir)
     else:
-        checkpoint_dir = '{}/models_chopped_conv_no_freeze'.format(args.model_dumpdir)
+        checkpoint_dir = '{}/models_chopped_conv_no_freeze_test_best'.format(args.model_dumpdir)
 
     # reload weights from restore_file if specified
     restore_file = args.restore_file  # specify checkpoint to restore from or specify None

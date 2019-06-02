@@ -4,9 +4,11 @@ import json
 import os
 import shutil
 import sys
+import numpy as np
 
 import torch
 import torch.utils.data
+from torch.utils.data.sampler import SubsetRandomSampler,BatchSampler
 from torch import nn, optim
 from torch.nn import functional as F
 from torchvision import transforms, datasets
@@ -15,7 +17,7 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser(description='chopped')
 parser.add_argument('--data-dir', type=str, default='./ssl_data_96',
                     help='location of data')
-parser.add_argument('--log-file', type=str, default='drive/My Drive/DL_Project/model_log/log_chopped_freeze_32.txt',
+parser.add_argument('--log-file', type=str, default='drive/My Drive/DL_Project/model_log/log_conv_freeze_32.txt',
                     help='location of log file')
 parser.add_argument('--restore-file', type=str, default=None,
                     help='location of checkpoint to restore params')
@@ -47,7 +49,8 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 # open log file
 log_file = codecs.open(args.log_file, 'w', encoding='utf-8')
-
+indices = [64*i for i in range(1000)] + [64*i+1 for i in range(1000)]
+indices.sort()
 
 def image_loader(path, batch_size):
     transform = transforms.Compose(
@@ -61,7 +64,8 @@ def image_loader(path, batch_size):
     data_loader_sup_train = torch.utils.data.DataLoader(
         sup_train_data,
         batch_size=batch_size,
-        shuffle=True
+        # shuffle=True,
+        sampler = SubsetRandomSampler(indices)
     )
     data_loader_sup_val = torch.utils.data.DataLoader(
         sup_val_data,
@@ -80,7 +84,12 @@ def image_loader(path, batch_size):
 train_loader, valid_loader, unsup_loader = image_loader(path=args.data_dir,
                                                         batch_size=args.batch_size)
 
+print(type(train_loader))
 
+# print(train_loader.shape)
+# i1, l1 = next(iter(train_loader))
+# print(i1.shape)
+# print(len(train_loader))
 # define variational autoencoder model
 class VAE(nn.Module):
     def __init__(self):
@@ -139,16 +148,22 @@ class FineTuneModel(nn.Module):
     def __init__(self, original_model):
         super(FineTuneModel, self).__init__()
 
+        # only the encoder of VAE (first 4 layers)
         self.conv1 = list(original_model.children())[0]
         self.conv1_bn = list(original_model.children())[1]
         self.conv2 = list(original_model.children())[2]
         self.conv2_bn = list(original_model.children())[3]
 
-        # only the encoder of VAE (first 6 layers)
         # self.features = nn.Sequential(*list(original_model.children())[:6])
-        self.fc1 = nn.Linear(9 * 88 * 88, 4096)
-        self.fc1_bn = nn.BatchNorm1d(4096)
-        self.fc2 = nn.Linear(4096, 1000)
+
+        self.conv3 = nn.Conv2d(9, 9, 5)
+        self.conv3_bn = nn.BatchNorm2d(9)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv4 = nn.Conv2d(9, 12, 5)
+        self.conv4_bn = nn.BatchNorm2d(12)
+        self.fc1 = nn.Linear(12 * 19 * 19, 2048)
+        self.fc1_bn = nn.BatchNorm1d(2048)
+        self.fc2 = nn.Linear(2048, 1000)
 
         self.modelName = 'chopped_net'
         # use args.freeze_vaeweights to decide to freeze or not to freeze the vae weights
@@ -161,12 +176,15 @@ class FineTuneModel(nn.Module):
         x = F.relu(self.conv1_bn(x))
         x = self.conv2(x)
         x = F.relu(self.conv2_bn(x))
-        x = x.view(-1, 9 * 88 * 88)
-        return x 
+        return x
 
     def forward(self, x):
         x = self.encode(x)
-        # x = x.view(x.size(0), -1)
+        x = self.conv3(x)
+        x = self.pool(F.relu(self.conv3_bn(x)))
+        x = self.conv4(x)
+        x = self.pool(F.relu(self.conv4_bn(x)))
+        x = x.view(-1, 12 * 19 * 19)
         x = self.fc1(x)
         x = F.relu(self.fc1_bn(x))
         x = self.fc2(x)
@@ -175,13 +193,13 @@ class FineTuneModel(nn.Module):
 
 
 def save_checkpoint(state, is_best, checkpoint_dir):
-    '''Saves model and training parameters at checkpoint_dir + '/last.pt'. If is_best==True, also saves
+    """Saves model and training parameters at checkpoint_dir + '/last.pt'. If is_best==True, also saves
     checkpoint_dir + '/best.pt'
     Args:
         state: (dict) contains model's state_dict, may contain other keys such as epoch, optimizer state_dict
         is_best: (bool) True if it is the best model seen till now
         checkpoint_dir: (string) folder where parameters are to be saved
-    '''
+    """
     filepath = os.path.join(checkpoint_dir, 'last.pt')
     if not os.path.exists(checkpoint_dir):
         print("Checkpoint Directory does not exist! Making directory {}".format(checkpoint_dir))
@@ -334,9 +352,9 @@ if __name__ == "__main__":
     log_file.write('total number of parameters: %d\n' % sum([m.numel() for m in model_chopped.parameters()]))
 
     if args.freeze_vaeweights:
-        checkpoint_dir = '{}/models_chopped_freeze_32'.format(args.model_dumpdir)
+        checkpoint_dir = '{}/models_chopped_conv_freeze_32'.format(args.model_dumpdir)
     else:
-        checkpoint_dir = '{}/models_chopped_no_freeze_32'.format(args.model_dumpdir)
+        checkpoint_dir = '{}/models_chopped_conv_no_freeze_test_best_2'.format(args.model_dumpdir)
 
     # reload weights from restore_file if specified
     restore_file = args.restore_file  # specify checkpoint to restore from or specify None
@@ -397,4 +415,3 @@ if __name__ == "__main__":
 
 # close log file
 log_file.close()
-
