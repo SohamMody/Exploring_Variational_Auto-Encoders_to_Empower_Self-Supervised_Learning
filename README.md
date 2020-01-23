@@ -1,5 +1,7 @@
 # Exploring VAEs to Empower Self-Supervised Learning
-Using unsupervised data to improve image classification of images taken from ImageNet 1000 classes dataset.
+The objective of this research was to utilize unlabelled data to improve image classification for images taken from ImageNet 1000 classes dataset over just using labelled images(which are much lower in number) for training. 
+
+Our approach
 
 
 ## use pretrained vae
