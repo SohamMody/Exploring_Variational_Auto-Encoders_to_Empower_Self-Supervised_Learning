@@ -35,3 +35,5 @@ NOTE: in case of memory error, decrease the batch size using `--batch-size` argu
 NOTE: if the training has stopped after some epochs and you want to train for some more epochs, use the above command lines with the additional argument `--restore-file last.pt`
 
 for example, `python train_chopped_conv.py --data-dir data/ssl_data_96 --freeze-vaeweights --batch-size 4000 --log-file log/chopped_conv_freeze --epochs 100 --restore-file last.pt`
+
+Through these experiments, we discovered that the VAE-ConvNet architecture without freezing the weights achieved an improvement of 1.55% top-5 accuracy using just 1 labeled sample per class as compared to the baseline model which was trained on 64 labeled images per class. This was very surpising that using self-supervised learning enabled the model to outperform the baseline model whilst just using a small fraction of the labelled images.
